@@ -4,7 +4,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <title>ShadowPaths</title>
-    <link rel="stylesheet" href="src/styles/style.css">
+    <link rel="stylesheet" href="src/style.css">
 </head>
 <body>
     <header>
@@ -13,12 +13,8 @@
     </header>
     <section class="panel">
         <div class="field">
-            <label for="cols">Columns</label>
-            <input id="cols" type="number" min="5" max="120" value="25">
-        </div>
-        <div class="field">
-            <label for="rows">Rows</label>
-            <input id="rows" type="number" min="5" max="120" value="25">
+            <label for="dimensions">Dimensions</label>
+            <input id="dimensions" type="number" min="5" max="40" value="25">
         </div>
         <div class="field">
             <label for="algo">Search</label>
@@ -48,6 +44,6 @@
         <span><span class="swatch sw-frontier"></span> Frontier</span>
         <span><span class="swatch sw-path"></span> Path</span>
     </div>
-    <script type="module" src="dist/bundle.js"></script>
+    <script type="module" src="/src/main.ts"></script>
 </body>
 </html>
