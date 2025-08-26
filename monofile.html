@@ -1,0 +1,468 @@
+<style>
+
+    button{
+      padding:8px 12px; border:none; border-radius:6px;
+      background:linear-gradient(180deg,#2341ff,#1529aa);
+      color:#fff; cursor:pointer; font-weight:600;
+    }
+    button.warning{ background:linear-gradient(180deg,#ffcf33,#caa11c); color:#0a0c16; }
+    button:disabled{ opacity:.6; cursor:not-allowed; }
+
+    .canvas-wrap{
+      width:100%; max-width:900px; aspect-ratio:1;
+      background:#0b0f20; margin-top:12px;
+      border-radius:8px; overflow:hidden; position:relative;
+    }
+    canvas{ width:100%; height:100%; display:block; }
+
+    .legend{ margin-top:8px; font-size:12px; color:var(--muted); display:flex; gap:12px; flex-wrap:wrap; align-items:center; }
+    .swatch{ width:12px; height:12px; border:1px solid #2a3053; border-radius:2px; display:inline-block; }
+    .sw-visited{ background:var(--visited); }
+    .sw-frontier{ background:var(--frontier); }
+    .sw-path{ background:var(--path); }
+    .sw-start{ background:var(--start); }
+    .sw-goal{ background:var(--goal); }
+    .sw-player{ background:var(--player); }
+    .hint{ margin-left:auto; font-size:12px; color:var(--muted); }
+  </style>
+</head>
+<body>
+  <header>
+    <h1>Random Maze + BFS/DFS Visualizer</h1>
+    <p>Use W A S D to move. Generate a maze, then watch BFS or DFS explore and solve it</p>
+  </header>
+
+  <section class="panel">
+    <div class="field">
+      <label for="cols">Columns</label>
+      <input id="cols" type="number" min="5" max="120" value="25" />
+    </div>
+    <div class="field">
+      <label for="rows">Rows</label>
+      <input id="rows" type="number" min="5" max="120" value="25" />
+    </div>
+    <div class="field">
+      <label for="algo">Search</label>
+      <select id="algo">
+        <option value="bfs">Breadth-First Search</option>
+        <option value="dfs">Depth-First Search</option>
+      </select>
+    </div>
+    <div class="field">
+      <label for="speed">Speed</label>
+      <input id="speed" type="range" min="1" max="120" value="60" />
+    </div>
+    <div class="buttons">
+      <button id="btnNew">New Maze</button>
+      <button id="btnSolve">Solve</button>
+      <button id="btnReset" class="warning">Reset</button>
+    </div>
+  </section>
+
+  <div class="canvas-wrap">
+    <canvas id="maze" tabindex="0" aria-label="Maze"></canvas>
+  </div>
+
+  <div class="legend">
+    <span><span class="swatch sw-start"></span> Start</span>
+    <span><span class="swatch sw-goal"></span> Goal</span>
+    <span><span class="swatch sw-player"></span> Player</span>
+    <span><span class="swatch sw-visited"></span> Visited</span>
+    <span><span class="swatch sw-frontier"></span> Frontier</span>
+    <span><span class="swatch sw-path"></span> Path</span>
+    <span class="hint">Tip: click canvas then WASD to move</span>
+  </div>
+
+  <script type="module">
+    // @ts-check
+    const canvas = /** @type {HTMLCanvasElement} */(document.getElementById('maze'));
+    const ctx    = /** @type {CanvasRenderingContext2D} */(canvas.getContext('2d'));
+
+    const colsInput  = document.getElementById('cols');
+    const rowsInput  = document.getElementById('rows');
+    const algoSelect = document.getElementById('algo');
+    const speedRange = document.getElementById('speed');
+    const btnNew     = document.getElementById('btnNew');
+    const btnSolve   = document.getElementById('btnSolve');
+    const btnReset   = document.getElementById('btnReset');
+
+    let COLS, ROWS, CELL, PADDING=16, WALL_W=2;
+    let walls, visited, frontier, parent, path;
+    let start, goal, player;
+    let RUNNING = false, stepTimer;
+
+    const idx = (r,c)=> r*COLS + c;
+    const inBounds=(r,c)=> r>=0 && c>=0 && r<ROWS && c<COLS;
+
+    function clamp(n,lo,hi){ return Math.max(lo,Math.min(hi,n)); }
+
+    function resizeCanvas(){
+      const rect = canvas.getBoundingClientRect();
+      const dpr = window.devicePixelRatio||1;
+      const dw = Math.floor(rect.width*dpr), dh = Math.floor(rect.height*dpr);
+      if(canvas.width!==dw||canvas.height!==dh){
+        canvas.width=dw; canvas.height=dh;
+      }
+      ctx.setTransform(dpr,0,0,dpr,0,0);
+    }
+
+    function computeCell(){
+      const side = Math.min(canvas.clientWidth, canvas.clientHeight) - 2*PADDING;
+      const maxG = Math.max(COLS, ROWS);
+      CELL = Math.max(6, Math.floor(side/maxG));
+      WALL_W = Math.max(1, Math.floor(CELL*0.12));
+    }
+
+    function initGrid(){
+      walls = Array(ROWS*COLS).fill(0).map(_=>({top:true, right:true, bottom:true, left:true}));
+      visited = Array(ROWS*COLS).fill(false);
+      frontier= Array(ROWS*COLS).fill(false);
+      parent  = Array(ROWS*COLS).fill(-1);
+      path    = [];
+      start = {r:0,c:0};
+      goal  = {r:ROWS-1,c:COLS-1};
+      player= {r:0,c:0};
+    }
+
+    // Prim’s algorithm
+    function generateMaze(){
+      initGrid();
+      const inTree = Array(ROWS*COLS).fill(false);
+      const edges = [];
+      const addEdges = (r,c)=>{
+        const u = idx(r,c);
+        for(const [dir,dr,dc] of [['top',-1,0],['right',0,1],['bottom',1,0],['left',0,-1]]){
+          const nr=r+dr, nc=c+dc;
+          if(!inBounds(nr,nc)) continue;
+          const v=idx(nr,nc);
+          if(!inTree[v]) edges.push({from:u,to:v,dir});
+        }
+      };
+
+      const s = idx(
+        Math.floor(Math.random()*ROWS),
+        Math.floor(Math.random()*COLS)
+      );
+      inTree[s]=true; 
+      addEdges(Math.floor(s/COLS), s%COLS);
+
+      while(edges.length){
+        const k = Math.floor(Math.random()*edges.length);
+        const {from,to,dir} = edges.splice(k,1)[0];
+        if(inTree[from] && inTree[to]) continue;
+        const a = inTree[from]?from:to, b = inTree[from]?to:from;
+        const ar=Math.floor(a/COLS), ac=a%COLS;
+        const br=Math.floor(b/COLS), bc=b%COLS;
+
+        if(br===ar-1){ walls[a].top=false;    walls[b].bottom=false; }
+        if(br===ar+1){ walls[a].bottom=false; walls[b].top=false;    }
+        if(bc===ac+1){ walls[a].right=false;  walls[b].left=false;   }
+        if(bc===ac-1){ walls[a].left=false;   walls[b].right=false;  }
+
+        inTree[b]=true;
+        addEdges(br,bc);
+      }
+    }
+
+    function neighbors(u){
+      const r=Math.floor(u/COLS), c=u%COLS, w=walls[u];
+      const out=[];
+      if(!w.top   && inBounds(r-1,c)) out.push(idx(r-1,c));
+      if(!w.right && inBounds(r,c+1)) out.push(idx(r,c+1));
+      if(!w.bottom&& inBounds(r+1,c)) out.push(idx(r+1,c));
+      if(!w.left  && inBounds(r,c-1)) out.push(idx(r,c-1));
+      return out;
+    }
+
+    function clearBoard(){
+      ctx.fillStyle='#0b0f20';
+      ctx.fillRect(0,0,canvas.clientWidth,canvas.clientHeight);
+    }
+
+    function drawGrid(){
+      const ox=PADDING, oy=PADDING;
+      ctx.save();
+      ctx.strokeStyle='#1b2144';
+      ctx.lineWidth=1;
+      ctx.beginPath();
+      for(let r=0;r<=ROWS;r++){
+        const y = oy + r*CELL + .5;
+        ctx.moveTo(ox, y);
+        ctx.lineTo(ox + COLS*CELL, y);
+      }
+      for(let c=0;c<=COLS;c++){
+        const x = ox + c*CELL + .5;
+        ctx.moveTo(x, oy);
+        ctx.lineTo(x, oy + ROWS*CELL);
+      }
+      ctx.stroke();
+      ctx.restore();
+    }
+
+    function drawWalls(){
+      ctx.save();
+      ctx.strokeStyle= getComputedStyle(document.documentElement).getPropertyValue('--wall');
+      ctx.lineWidth=WALL_W;
+      ctx.lineCap='square';
+      for(let r=0;r<ROWS;r++){
+        for(let c=0;c<COLS;c++){
+          const u=idx(r,c);
+          const x=PADDING + c*CELL, y=PADDING + r*CELL;
+          ctx.beginPath();
+          if(walls[u].top)   { ctx.moveTo(x,y); ctx.lineTo(x+CELL,y); }
+          if(walls[u].left)  { ctx.moveTo(x,y); ctx.lineTo(x,y+CELL); }
+          if(r===ROWS-1 && walls[u].bottom){
+            ctx.moveTo(x, y+CELL); ctx.lineTo(x+CELL, y+CELL);
+          }
+          if(c===COLS-1 && walls[u].right){
+            ctx.moveTo(x+CELL,y); ctx.lineTo(x+CELL,y+CELL);
+          }
+          ctx.stroke();
+        }
+      }
+      ctx.restore();
+    }
+
+    function fillCell(r,c,color){
+      ctx.fillStyle=color;
+      ctx.fillRect(
+        PADDING + c*CELL + WALL_W,
+        PADDING + r*CELL + WALL_W,
+        CELL - 2*WALL_W,
+        CELL - 2*WALL_W
+      );
+    }
+
+    function drawVisitedFrontier(){
+      for(let i=0;i<ROWS*COLS;i++){
+        if(visited[i]){
+          const r=Math.floor(i/COLS), c=i%COLS;
+          fillCell(r,c, getComputedStyle(document.documentElement).getPropertyValue('--visited'));
+        } else if(frontier[i]){
+          const r=Math.floor(i/COLS), c=i%COLS;
+          fillCell(r,c, getComputedStyle(document.documentElement).getPropertyValue('--frontier'));
+        }
+      }
+    }
+
+    function drawPathOverlay(){
+      for(const u of path){
+        const r=Math.floor(u/COLS), c=u%COLS;
+        fillCell(r,c, getComputedStyle(document.documentElement).getPropertyValue('--path'));
+      }
+    }
+
+    function drawStartGoalPlayer(){
+      // start & goal
+      fillCell(start.r, start.c, getComputedStyle(document.documentElement).getPropertyValue('--start'));
+      fillCell(goal.r,  goal.c,  getComputedStyle(document.documentElement).getPropertyValue('--goal'));
+
+      // player
+      const x = PADDING + player.c*CELL + CELL/2;
+      const y = PADDING + player.r*CELL + CELL/2;
+      const r = Math.max(3, Math.min(14, CELL*0.3));
+      ctx.save();
+      ctx.fillStyle = getComputedStyle(document.documentElement).getPropertyValue('--player');
+      ctx.beginPath();
+      ctx.arc(x,y,r,0,2*Math.PI);
+      ctx.fill();
+      ctx.restore();
+    }
+
+    function drawSolutionDots(seq){
+      ctx.save();
+      ctx.fillStyle = '#000';
+      for(const u of seq){
+        const r = Math.floor(u/COLS), c=u%COLS;
+        const x = PADDING + c*CELL + CELL/2;
+        const y = PADDING + r*CELL + CELL/2;
+        const rad = Math.max(2, CELL*0.1);
+        ctx.beginPath();
+        ctx.arc(x,y,rad,0,Math.PI*2);
+        ctx.fill();
+      }
+      ctx.restore();
+    }
+
+    function redraw(){
+      resizeCanvas();
+      computeCell();
+      clearBoard();
+      drawGrid();
+      drawVisitedFrontier();
+      drawPathOverlay();
+      drawWalls();
+      drawStartGoalPlayer();
+    }
+
+    function disableControls(flag){
+      [btnNew, btnSolve, btnReset, colsInput, rowsInput, algoSelect]
+        .forEach(el => el.disabled = flag);
+    }
+
+    function cancelAnimation(){
+      if(stepTimer) clearInterval(stepTimer);
+      stepTimer = undefined;
+      RUNNING = false;
+      disableControls(false);
+    }
+
+    function solve(selected){
+      if(RUNNING) return;
+      visited.fill(false);
+      frontier.fill(false);
+      parent.fill(-1);
+      path = [];
+      RUNNING = true;
+      disableControls(true);
+
+      const startU = idx(start.r, start.c),
+            goalU  = idx(goal.r,  goal.c);
+
+      const queue = [startU];
+      visited[startU] = true;
+      frontier[startU] = false;
+
+      let found = false;
+      const delay = 1000 / clamp(parseInt(speedRange.value,10)||60,1,120);
+
+      stepTimer = setInterval(()=>{
+        if(!queue.length){
+          // no more to explore → no solution
+          cancelAnimation();
+          redraw();
+          alert('No solution possible');
+          return;
+        }
+
+        const u = selected==='bfs' ? queue.shift() : queue.pop();
+
+        for(const v of neighbors(u)){
+          if(!visited[v]){
+            visited[v] = true;
+            parent[v]  = u;
+            queue.push(v);
+            frontier[v]= true;
+          }
+        }
+        frontier[u] = false;
+
+        if(u === goalU && !found){
+          found = true;
+          // backtrack path
+          let cur = u;
+          const seq = [];
+          while(cur !== -1){
+            seq.push(cur);
+            cur = parent[cur];
+          }
+          seq.reverse();
+
+          clearInterval(stepTimer);
+          stepTimer = undefined;
+          // animate final path then dots
+          animatePath(seq);
+          return;
+        }
+        redraw();
+      }, delay);
+    }
+
+    function animatePath(seq){
+      let i = 0;
+      const delay = Math.max(20, 1000 / clamp(parseInt(speedRange.value,10)||60,1,120));
+      stepTimer = setInterval(()=>{
+        if(i < seq.length){
+          path = seq.slice(0, i+1);
+          redraw();
+          i++;
+        } else {
+          clearInterval(stepTimer);
+          stepTimer = undefined;
+          RUNNING = false;
+          disableControls(false);
+          redraw();
+          drawSolutionDots(seq);
+        }
+      }, delay);
+    }
+
+    // user movement
+    function tryMove(dr,dc){
+      if(RUNNING) return;
+      const r=player.r, c=player.c, u=idx(r,c);
+      const nr=r+dr, nc=c+dc;
+      if(!inBounds(nr,nc)) return;
+      const v=idx(nr,nc);
+      if(nr===r-1 && !walls[u].top)    player.r--;
+      if(nr===r+1 && !walls[u].bottom) player.r++;
+      if(nc===c-1 && !walls[u].left)   player.c--;
+      if(nc===c+1 && !walls[u].right)  player.c++;
+      redraw();
+      if(player.r===goal.r && player.c===goal.c){
+        // simple flash
+        let f=0;
+        const iv=setInterval(()=>{
+          ctx.globalAlpha = (f++%2)?0.4:1;
+          redraw();
+          if(f>6){
+            clearInterval(iv);
+            ctx.globalAlpha = 1;
+            redraw();
+          }
+        }, 80);
+      }
+    }
+
+    // event wiring
+    btnNew.addEventListener('click', ()=>{
+      cancelAnimation();
+      COLS = clamp(parseInt(colsInput.value,10)||25,5,120);
+      ROWS = clamp(parseInt(rowsInput.value,10)||25,5,120);
+      generateMaze();
+      redraw();
+      canvas.focus();
+    });
+
+    btnSolve.addEventListener('click', ()=>{
+      cancelAnimation();
+      redraw();
+      solve(algoSelect.value);
+    });
+
+    btnReset.addEventListener('click', ()=>{
+      cancelAnimation();
+      player = {r:0,c:0};
+      redraw();
+      canvas.focus();
+    });
+
+    speedRange.addEventListener('input', ()=>{
+      if(RUNNING){
+        cancelAnimation();
+        // re-solve or reanimate depending on state
+        if(path.length) animatePath(path.slice());
+        else solve(algoSelect.value);
+      }
+    });
+
+    canvas.addEventListener('keydown', e=>{
+      switch(e.key.toLowerCase()){
+        case 'w': tryMove(-1,0); e.preventDefault(); break;
+        case 's': tryMove(1,0);  e.preventDefault(); break;
+        case 'a': tryMove(0,-1); e.preventDefault(); break;
+        case 'd': tryMove(0,1);  e.preventDefault(); break;
+      }
+    });
+
+    window.addEventListener('resize', redraw);
+
+    // initial boot
+    COLS = clamp(parseInt(colsInput.value,10)||25,5,120);
+    ROWS = clamp(parseInt(rowsInput.value,10)||25,5,120);
+    generateMaze();
+    redraw();
+    setTimeout(()=> canvas.focus(), 100);
+  </script>
+</body>
+</html>

@@ -1,0 +1,14 @@
+:root{
+    --bg: #0f1220;
+    --panel: #171a2b;
+    --text: #e7ecff;
+    --muted: #9aa3c7;
+    --accent: #7aa2ff;
+    --wall: #dde3ff;
+    --visited: #2a5fff22;
+    --frontier: #ffd00022;
+    --path: #24d5a155;
+    --start: #2bff88aa;
+    --goal: #ff6b6baa;
+    --player: #ffffff;
+}
