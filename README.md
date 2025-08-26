@@ -3,7 +3,7 @@
 Random Maze Generator + BFS/DFS Visualizer  
 Explore mazes, watch algorithms in action, and discover paths! 🚀
 
-[![Netlify Status](https://api.netlify.com/api/v1/badges/YOUR_NETLIFY_SITE/deploy-status)](https://app.netlify.com/sites/YOUR_NETLIFY_SITE/deploys)
+[![Netlify Status](https://api.netlify.com/api/v1/badges/d0561076-6822-4b8c-98cc-7bd0ffe0fb50/deploy-status)](https://app.netlify.com/projects/shadowspaths/deploys)
 
 ---
 
@@ -14,6 +14,13 @@ Explore mazes, watch algorithms in action, and discover paths! 🚀
 - 🌈 Interactive controls to customize your maze
 - 📈 Speed & size adjustments
 - 🖥️ Built with TypeScript, CSS, and HTML
+
+---
+
+## 🌍 Demo
+
+**Try it live:**  
+[Netlify Demo](shadowspaths.netlify.app)  
 
 ---
 
@@ -53,14 +60,6 @@ Explore mazes, watch algorithms in action, and discover paths! 🚀
 - TypeScript
 - CSS
 - HTML
-
----
-
-## 🌍 Demo
-
-**Try it live:**  
-[Netlify Demo](https://YOUR_NETLIFY_SITE.netlify.app)  
-_(Replace with your actual Netlify site URL!)_
 
 ---
 
