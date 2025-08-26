@@ -11,5 +11,31 @@
         <h1>Random Maze + BFS/DFS Visualizer</h1>
         <p>Use W A S D to move. Generate a maze, then watch BFS or DFS explore and solve it</p>
     </header>
+    <section class="panel">
+        <div class="field">
+            <label for="cols">Columns</label>
+            <input id="cols" type="number" min="5" max="120" value="25">
+        </div>
+        <div class="field">
+            <label for="rows">Rows</label>
+            <input id="rows" type="number" min="5" max="120" value="25">
+        </div>
+        <div class="field">
+            <label for="algo">Search</label>
+            <select id="algo">
+                <option value="bfs">Breadth-First Search</option>
+                <option value="dfs">Depth-First Search</option>
+            </select>
+        </div>
+        <div class="field">
+            <label for="speed">Speed</label>
+            <input id="speed" type="range" min="1" max="120" value="60">
+        </div>
+        <div class="buttons">
+            <button id="New">New Maze</button>
+            <button id="Solve">Solve</button>
+            <button id="Reset" class="warning">Reset</button>
+        </div>
+    </section>
 </body>
 </html>
